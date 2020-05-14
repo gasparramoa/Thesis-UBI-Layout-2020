@@ -1,0 +1,127 @@
+%Talk about how difficult it was to convert the model in Jetson Nano. and use it.
+%Tensort7.0 wasn't compatible. jetpack4.3 only had tensort 6.0.  é estupido mas versões de tensorrt não são compativeis.
+
+
+
+% Para instalar o TensorRT, estou a seguir este tutorial. Também serve para instalar o repositório onnx-rt que é para converter onnx em tensorRealTime.
+% https://medium.com/@fanzongshaoxing/accelerate-pytorch-model-with-tensorrt-via-onnx-d5b5164b369
+
+% o link acima não deu muito bem... Estou a fazer a partir de aqui agora.
+% https://github.com/NVIDIA/TensorRT/
+
+%Esqueçe tudo, este é um link tutorial que dá jeito:
+%https://medium.com/analytics-vidhya/installation-guide-of-tensorrt-for-yolov3-58a89eb984f
+
+% Agora estou aqui :
+%https://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html
+% E depois vim para aqui, para o tar:
+% https://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html#installing-tar
+% Até ao ponto 4. está tudo bem!
+% ponto 5 não dá muito bem, tive de fazer assim
+% 5: export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/socialab/human_vision/TensorRT-7.0.0.11/lib
+% 6: sudo pip3 install tensorrt-7.0.0.11-cp36-none-linux_x86_64.whl 
+%(tensorrt já aparece no pip list)
+% 7: sudo pip3 install uff-0.6.5-py2.py3-none-any.whl
+% 8: sudo pip3 install graphsurgeon-0.4.1-py2.py3-none-any.whl
+% Ficou tudo, depois fui à pasta Tensor7.0.0 .../ samples e fiz "make -j8"
+% Ao fazer: "./sample_mnist" na basta \Tensor\bin\ deu um erro do libnvinv... 
+% Para resolver:export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/socialab/human_vision/TensorRT-7.0.0.11/lib
+% Já consigo dar import tensorrt sem nenhum erro!
+% exemplo sample continua a dar um errozito. mas o sample_googlenet não tem erros.
+
+% Tentar só correr o exemplo sample_mnist ou ent cagar porque só não dá porque não tem os dados.
+% Próximo passo é installar o conversor de onnx para tensorRT.
+
+% onnx-tensorRT, mkdir build && cd build
+% cmake .. -DCUDA_INCLUDE_DIRS=/usr/local/cuda-10.0/include -DTENSORRT_ROOT=/home/socialab/human_vision/TensorRT-7.0.0.11 -DGPU_ARCHS="61"
+% make -j8 && sudo make install deu tudo bem!
+
+%sudo python3 setup.py install
+% deu este erro depois do comando anterior^: error: command 'swig' failed with exit status 1
+% Fiz:sudo python3 setup.py install 
+% voltei a tentar: "sudo python3 setup.py install"
+
+%Agora deu este erro:
+% NvOnnxParser.h:26:10: fatal error: NvInfer.h: No such file or directory
+% Resolvi e deu um erro de cuda.h mas acho que não é obrigatório, onnx-tensorrt está instalado se utilizarmos o pip3 list!
+
+%onnx2trt model_simple.onnx -o modelTensorRT.trt
+% Deu este erro: [5] Assertion failed: tensors.count(input_name)
+
+
+% Cheguei a resolver, instalei com o master o onnx-tensorrt mas agora dá um erro na camada Resize do meu modelo. Vou tentar alterar o ficheiro "builtin_op_importers.cpp" e instalar de novo o onnx e ver o que acontece. JA ESTOU FARTO DISTO! :(
+% Quando dá o erro swig, temos de fazer:
+% Add #define TENSORRTAPI at the top of NvOnnxParser.h, and re-run python setup.py install. I believe the error comes from swig seeing a syntax error with TENSORRTAPI."
+% Outro erro é que temos de ir ao ficheiro setup.py e meter: INC_DIRS = ["/home/socialab/human_vision/TensorRT-7.0.0.11/include"]
+
+
+%pycuda não consigo instalar no usr/local, só na variavel ambiente.
+% Instalei pycuda na variavel ambiente (human-vision) e também instalei o tensorrt.
+% Estou a seguir este tutorial: https://devblogs.nvidia.com/speeding-up-deep-learning-inference-using-tensorflow-onnx-and-tensorrt/
+% É para Keras mas penso que dá para utilizar no nosso modelo. Uma coisa bue é que usa segmentação semântica! O que é ideal para o nosso caso.
+% Tive de alterar algumas coisas no ficheiros engine.py, é preciso colocar a camada de output da rede! 
+
+% Já está tudo a funcionar.. o grande problema é que a rede retorna sempre uma imagem toda a verde... ou seja é como se não deteta-se nada... Vou tentar alterar a maneira como a imagem é processada.
+
+%Agora sim estou a mandar exatamente a mesma imagem, acho eu. Não sei é como é que o modelo a utiliza... parece que a utiliza ao calhas mas ao inicio está exatamente igual a como fiz no modelo torch bisenet.
+
+% O que pode estar mal ainda é os inputs e assim... tinha de experimentar o exemplo deles e ver como é que essas variaveis seriam.
+%   CONSEGUI FAZER TUDO!!!!!! AGORA posso ainda meter tempos e meter tabelas.
+%   Depois passar para o Jetson
+%   Depois tenho o segundo método feito.
+% DIFERENÇA DE INFERENCIA DE PYTORCH PARA TENSORRT
+
+
+% Em relação ao tempo...
+% Para fazer tudo... ler imagem + inferencia + resize demora 4 segundos para 100 iterações, ou seja funciona a 25 FPS no computador do lab. Mas se estivemos só a falar da inferência esta em 100 iterações demora 1.9007 segundos, ou seja funciona a pelo menos 50 FPS. 0.019007seg por inferencia. (52-53 FPS).
+
+% A inferência no pytorch com o modelo original no computador do lab é 2.82 segundos (quase + 1 segundo), ou seja funciona a pelo menos (35 FPS). 0.0282885 segundos por inferência (35-36).
+
+% Há ainda uma coisa que não percebi... No computador do lab não uso muito a GPU... só 1Gb, o que é bom porque no Jetson também não vou usar muito. O grande problema está que o script não deve estar muito otimizado. O melhor por exemplo 2 imagens de cada vez e talvez consiga mais FPS digo eu.
+
+% Depois de se testar no Jetson tenho de testar isso, page-locked memory buffers, criar logo mais memória para as imagens. Mas por outro lado tinhamos duas frames muito proximas... sinceramente não sei o que será melhor. Se conseguimos mais de 10 FPS no Jetson é vitória. Se conseguimos 3FPS já é muito bom porque a accuracy vai melhorar bastante!
+
+% O jetson nano já tem tudo o que é necessário para correr o programa mas ao correr deu um erro do TensorRT. A versão do Jetson do tensorRT é a 6.0 e a que eu utilizei no lab pc é a 7.0. E ainda não saiu a versão 7.0 para o Jetson. O que me resta tentar fazer é tentar instalar a versão 6.0 no lab e ver se dá para criar o modelo na mesma.
+
+% Não funciona com a versão 6.0. O que significa que vamos ter de atualizar o Jetson Nano.
+
+% Jetpack 4.4 (32.4.2) has TensorRT 7.0 while Jetpack 4.3 only has TensorRT 6.0 which is not compatible with our engine/model. (This new version came April 21.)
+% What I am going to do:
+% Use command "dd" for saving the oldest data of Jetson
+% Format the SD-Card and follow the Jetson Nano tutorials and install Jetpack 4.4
+
+
+%O jetson já tem tudo o que precisa. Só que a versão do tensorRT ainda não é a correta. É necessário alterar a versão do computador e atualiza-la para a mesma do jetson.
+%Não dá para instalar outra versão do tensorrt... Só se eu criar o modelo no jetson. Pode ser que funcione.
+
+% Erro cmake - veroa jetson 3.10.2 e a versão requirida é 3.13.
+% Fiz pip3 install scikit-build
+% O cmake ainda não dava, ent fiz,
+% sudo apt-get install libssl-dev
+% Download do cmake.tar.gz, cd cmake-3.17 e depois fiz sudo ./bootstrap
+% Agora fiz sudo make (está a demorr muito--- 20~30 min)
+% Depois fiz sudo make install e agora o cmake já funciona com a versão 3.17.
+
+% Agora já podemos instalar o ONNX-TENSORRT.
+% Fiz o cmake mas deu um erro, could not find protobuf!
+% Fiz sudo apt-get install libprotobuf-dev protobuf-compiler
+% Resultou mas deu outro erro, /home/socialab/onnx-tensorrt/third_party/onnX does not contain a CMakeLists.txt file.
+% Fiz: git submodule update --init --recursive 
+% Funcionou e o cmake também já funcionou!
+% cmake .. -DCUDA_INCLUDE_DIRS=/usr/local/cuda-10.2/include -DTENSORRT_ROOT=/usr/src/tensorrt -DGPU_ARCHS="53"
+% make -j4 e sudo make install e parece que eu.
+% Deu erro quando fiz onnx2trt model.onnx -o model.txt:
+% "Assertion failed, transformationMode == asymetric"... mas esse erro também me deu na altura no computador do lab por isso ainda é possivel.
+% É preciso alterar o ficheiro "builtin_op_importers.cpp, vamos voltar a fazer os mesmos passos para instalar o onnx mas alteramos esse file.
+% git clone onnx-tensorrt
+% git submodule update --init --recursive
+% mkdir build && cd build
+% cmake .. -DCUDA_INCLUDE_DIRS=/usr/local/cuda-10.2/include -DTENSORRT_ROOT=/usr/src/tensorrt -DGPU_ARCHS="53"
+% Substituir ficheiro builtin_op_importers.cpp
+% make -j4 && sudo make install
+% Depois corri onnx2trt modelo_11.onnx -o modeloTrt.trt
+% A RAM não aguentou. Vou tentar instalar o i3 para melhorar a RAM para ver se aguenta... mas não estava a dar erro nenhum o que é muito bom.
+% Com o i3 a memória vai até 3.1Gb mas consegiu converter em 2~3 min.
+% consegui está a correr o modelo no Jetson!
+
+% 
